@@ -1,12 +1,13 @@
 #include <TinyGPS++.h>
 #include <SoftwareSerial.h>
 /*
-   This sample sketch demonstrates the normal use of a TinyGPS++ (TinyGPSPlus) object.
-   It requires the use of SoftwareSerial, and assumes that you have a
-   4800-baud serial GPS device hooked up on pins 4(rx) and 3(tx).
+
+Testing GPS for new device
+Possible problem is when power is disabled so you have to enable it via power management lib
+
 */
-static const int RXPin = 34, TXPin = 12;
-static const uint32_t GPSBaud = 9600;
+static const int RXPin = 34, TXPin = 12; 	// this is specific for device, read values on the board
+static const uint32_t GPSBaud = 9600;		// this is standard value for GPS Ublox M6N
 
 // The TinyGPS++ object
 TinyGPSPlus gps;
@@ -19,10 +20,9 @@ void setup()
   Serial.begin(115200);
   ss.begin(GPSBaud);
 
-  Serial.println(F("DeviceExample.ino"));
-  Serial.println(F("A simple demonstration of TinyGPS++ with an attached GPS module"));
-  Serial.print(F("Testing TinyGPS++ library v. ")); Serial.println(TinyGPSPlus::libraryVersion());
-  Serial.println(F("by Mikal Hart"));
+  Serial.println(F("Testing GPS functionality for TTGO"));
+  Serial.print(F("Testing with TinyGPS++ library v. ")); Serial.println(TinyGPSPlus::libraryVersion());
+  Serial.println(F("I.J."));
   Serial.println();
 }
 
@@ -35,7 +35,7 @@ void loop()
 
   if (millis() > 5000 && gps.charsProcessed() < 10)
   {
-    Serial.println(F("No GPS detected: check wiring."));
+    Serial.println(F("No GPS detected: check RX/TX"));
     while(true);
   }
 }
@@ -45,13 +45,13 @@ void displayInfo()
   Serial.print(F("Location: ")); 
   if (gps.location.isValid())
   {
-    Serial.print(gps.location.lat(), 6);
+    Serial.print(gps.location.lat(), 4);
     Serial.print(F(","));
-    Serial.print(gps.location.lng(), 6);
+    Serial.print(gps.location.lng(), 4);
   }
   else
   {
-    Serial.print(F("INVALID"));
+    Serial.print(F("INVALID DATA"));
   }
 
   Serial.print(F("  Date/Time: "));
@@ -65,7 +65,7 @@ void displayInfo()
   }
   else
   {
-    Serial.print(F("INVALID"));
+    Serial.print(F("INVALID DATA"));
   }
 
   Serial.print(F(" "));
@@ -85,7 +85,7 @@ void displayInfo()
   }
   else
   {
-    Serial.print(F("INVALID"));
+    Serial.print(F("INVALID DATA"));
   }
 
   Serial.println();

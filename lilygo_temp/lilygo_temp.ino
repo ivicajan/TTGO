@@ -1,8 +1,10 @@
 #include "mcp9808.h"
 #include "SD.h"
 #include "SPI.h"
-#include "SPIFFS.h"
+// #include "SPIFFS.h"
 #include <WiFi.h>
+#include <PubSubClient.h>
+
 #include <GxFont_GFX.h>
 #include <GxEPD.h>
 #include <GxIO/GxIO_SPI/GxIO_SPI.h>
@@ -13,7 +15,6 @@
 #include <Fonts/FreeMonoBold12pt7b.h>
 #include <Fonts/FreeMonoBold18pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
-
 
 #define SPI_MOSI 23
 #define SPI_MISO -1
@@ -47,9 +48,38 @@ int mhour, mminute, msecond;
 GxIO_Class io(SPI, /*CS=5*/ ELINK_SS, /*DC=*/ ELINK_DC, /*RST=*/ ELINK_RESET);
 GxEPD_Class display(io, /*RST=*/ ELINK_RESET, /*BUSY=*/ ELINK_BUSY);
 
-SPIClass sdSPI(VSPI);
 const char *temp_string = "Temperature \n reading setup....";
 bool sdOK = false;
+// Replace the next variables with your SSID/Password combination
+const char* ssid = "ssid";
+const char* password = "password";
+
+// Add your MQTT Broker IP address, example:
+const char* mqtt_server = "192.168.1.101";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+
+void setup_wifi() {
+  delay(10);
+  // We start by connecting to a WiFi network
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+}
 
 void testWiFi()
 {
@@ -80,7 +110,7 @@ void testWiFi()
 }
 
 void writeData2Flash (){
-  file = SPIFFS.open(csvFileName, FILE_APPEND);
+  file = SD.open(csvFileName, FILE_APPEND);
   if (!file) {
     Serial.println("There was an error opening the file for writing");
     lastFileWrite = "FAILED OPEN";
@@ -95,7 +125,6 @@ void writeData2Flash (){
     }
   }
 }
-
 
 void setup()
 {

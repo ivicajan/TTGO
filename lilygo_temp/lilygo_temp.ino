@@ -43,20 +43,20 @@ float previousTemperature = -100.0;
 float temperature = 0;
 String csvOutStr = "";                // Buffer for output file
 String lastFileWrite = "";
-String csvFileName = "";
+String csvFileName="/temp_data.csv";
+
 File file;                            // Data file for the SPIFFS output
 int nsamples;                         // Counter for the number of samples gathered
-int myear, mmonth, mday;
-int mhour, mminute, msecond;
 
 GxIO_Class io(SPI, /*CS=5*/ ELINK_SS, /*DC=*/ ELINK_DC, /*RST=*/ ELINK_RESET);
 GxEPD_Class display(io, /*RST=*/ ELINK_RESET, /*BUSY=*/ ELINK_BUSY);
 
 const char *temp_string = "Temperature \n reading setup....";
 bool sdOK = false;
+bool wifiOK = true;
 // Replace the next variables with your SSID/Password combination
 const char* ssid = "naia_2g";
-const char* password = "Malinska";
+const char* password = "";
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 8*3600;
 const long  daylightOffset_sec = 0;
@@ -68,9 +68,10 @@ PubSubClient client(espClient);
 String mqtt_server = "192.168.1.101";  // piHub
 long lastMsg = 0;
 char msg[20];
-String TOPIC = "LabLily";
-String TOPICwait = "LabLily";
-String CLIENTID = "LabLily";
+String TOPIC = "LilyGo";
+String TOPICwait = "LilyGo";
+String CLIENTID = "LilyGo";
+
 
 void printLocalTime()
 {
@@ -93,29 +94,37 @@ void setup_wifi() {
   display.fillScreen(GxEPD_WHITE);
   display.setTextColor(GxEPD_BLACK);
   display.setFont(&FreeMonoBold9pt7b);
-  display.setCursor(20, 20);
-  display.print("Connecting to: ");
-  display.setCursor(20, 35);
+  display.setCursor(5, 10);
+  display.println("Connecting to: ");
   display.println(ssid);
-  display.setCursor(20, 50);
+  display.updateWindow(0, 0,  249,  127, true);
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
+  int i = 0;
+  while ((WiFi.status() != WL_CONNECTED) & (i < 10)) {
     delay(500);
+    i++;
     Serial.print(".");
     display.print(".");
+    display.updateWindow(0, 0,  249,  127, true);
+    wifiOK = false;
   }
-
+  if (wifiOK) {
   Serial.println("");
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
   display.println("\n");
   display.println("WiFi connected");
-  display.setCursor(20, 75);
   display.println("IP address: ");
-  display.setCursor(20, 90);  
   display.println(WiFi.localIP());
-  display.updateWindow(10, 10,  240,  100, true);
+  } else {
+  Serial.println("");
+  Serial.println("WiFi not connected");
+  display.println("\n");
+  display.println("WiFi not connected"); 
+  }
+  display.updateWindow(0, 0,  249,  127, true);
+  delay(1000);
 }
 
 void testWiFi()
@@ -125,7 +134,11 @@ void testWiFi()
     // WiFi.scanNetworks will return the number of networks found
     int n = WiFi.scanNetworks();
     Serial.println("scan done");
-    display.setCursor(20, 20);
+    display.setRotation(1);
+    display.fillScreen(GxEPD_WHITE);
+    display.setTextColor(GxEPD_BLACK);
+    display.setFont(&FreeMonoBold9pt7b);
+    display.setCursor(5, 10);
     display.println("scan done");
     if (n == 0) {
         Serial.println("no networks found");
@@ -155,10 +168,17 @@ void testWiFi()
     }
     Serial.println("");
     display.println("");
+    display.updateWindow(0, 0,  249,  127, true);
+    delay(1000);
 }
 
 void writeData2Flash (){
   file = SD.open(csvFileName, FILE_APPEND);
+  display.setRotation(1);
+  display.fillScreen(GxEPD_WHITE);
+  display.setTextColor(GxEPD_BLACK);
+  display.setFont(&FreeMonoBold9pt7b);
+  display.setCursor(10, 10);
   if (!file) {
     Serial.println("There was an error opening the file for writing");
     display.println("There was an error opening the file for writing");
@@ -173,59 +193,49 @@ void writeData2Flash (){
       lastFileWrite = "FAILED WRITE";
     }
   }
+  display.updateWindow(0, 0,  249,  127, true);
+  delay(1000);
 }
 
 void setup()
 {
   Serial.begin(115200);
-  ts.setResolution(3);
+  
+  ts.setResolution(3);  // resolution for temp sensor
   display.init();
   display.setRotation(1);
   display.fillScreen(GxEPD_WHITE);
-  display.drawExampleBitmap(BitmapExample1, 0, 0, 200, 100, GxEPD_BLACK);
-  delay(1000);
-  display.fillScreen(GxEPD_WHITE);
   display.setTextColor(GxEPD_BLACK);
-  display.setFont(&FreeMonoBold12pt7b);
-  display.setCursor(10, 10);
+  display.setFont(&FreeMonoBold9pt7b);
+  display.setCursor(5, 10);
   display.println("SD Card status: ");
   Serial.println("SD Card status: ");
   SPI.begin(SDCARD_CLK, SDCARD_MISO, SDCARD_MOSI, SDCARD_SS);
   if (!SD.begin(SDCARD_SS, SPI)){
-  sdOK = false;
   Serial.println("No SD CARD available");
-  display.setCursor(20, 10);
   display.println("No SD CARD available");
   } else {
   sdOK = true;
   Serial.println("SD CARD available");
-  display.setCursor(30, 10);
   display.println("SD CARD available");
-  delay(1000);
-  display.updateWindow(10, 10,  240,  100, true);
   }
-
-// G. SPIFFS to write data to onboard Flash
-//  if (!SPIFFS.begin(true)) {
-//    Serial.println("An Error has occurred while mounting SPIFFS - need to add retry");
-//    while (1);
-//  }
-
-  csvFileName="/temp_data.csv";
-
+  display.updateWindow(0, 0,  249,  127, true);
+  delay(1000);
+  
 // test WIFi and print available networks
   display.fillScreen(GxEPD_WHITE);
   testWiFi();
-  delay(5000);
+  delay(1000);
   display.fillScreen(GxEPD_WHITE);
   setup_wifi();
-  delay(5000);
+  delay(1000);
   display.fillScreen(GxEPD_WHITE);
 
   //init and get the time
+  if (wifiOK) {
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   printLocalTime();
-  
+  }
 }
 
 void loop()
@@ -236,19 +246,16 @@ void loop()
 
   if(previousTemperature!=temperature)
   {
-     printLocalTime();
-     showPartialUpdate(temperature);
-//    String tDate = String(gps.date.year()) + "-" + String(gps.date.month()) + "-" + String(gps.date.day());
-//    String tTime = String(gps.time.hour()) + ":" + String(gps.time.minute()) + ":" + String(gps.time.second());
-//    String sendPacket = tDate + "," + tTime + "," + String(temperature) + "\n";
+    printLocalTime();
+    showPartialUpdate(temperature);
     String sendPacket = String(nsamples) + "," + String(temperature) + "\n";
     csvOutStr += sendPacket;
     nsamples += 1;
     
   }
-  Serial.println(String(nsamples));
+
   if (nsamples > nSamplesFileWrite) {  // only write after collecting a good number of samples
-//  writeData2Flash();
+//  writeData2SDcard();
     }
     delay(5000);
 }
@@ -267,10 +274,13 @@ void showPartialUpdate(float temperature)
   display.setCursor(170, 40);
   display.setFont(&FreeMonoBold12pt7b);
   display.print("degC");
+  if (wifiOK) {
   display.setCursor(20, 70);
   display.print(ssid);
   display.setCursor(20, 90);
   display.setFont(&FreeMonoBold9pt7b);
   display.print(datestring);
-  display.updateWindow(10, 10,  240,  100, true);
+  }
+//  display.updateWindow(0, 0, GxEPD_WIDTH, GxEPD_HEIGHT, true);
+  display.updateWindow(0, 0,  249,  127, true);
 }

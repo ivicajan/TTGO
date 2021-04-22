@@ -35,7 +35,15 @@
 #define SDCARD_MISO 2
 
 #define BUTTON_PIN 39
+
 #define nSamplesFileWrite  300      // Number of samples to store in memory before file write
+
+// F. Deep Sleep Header
+#define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
+RTC_DATA_ATTR int bootCount = 0;
+// RTC_DATA_ATTR int sleepTime = 900; /* Time ESP32 will go to sleep (in seconds) */
+RTC_DATA_ATTR int sleepTime = 9; /* Time ESP32 will go to sleep (in seconds) */
+
 
 MCP9808 ts(24);
 WiFiClient espClient;
@@ -56,9 +64,9 @@ int nsamples;                         // Counter for the number of samples gathe
 bool sdOK = false;
 
 // Replace the next variables with your SSID/Password combination
-bool wifiOK = true;
+bool wifiOK;
 const char* ssid = "naia_2g";
-const char* password = "";
+const char* password = "Malinska";
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 8*3600;
 const long  daylightOffset_sec = 0;
@@ -68,9 +76,9 @@ char datestring[19];
 String mqtt_server = "192.168.1.101";  // piHub
 long lastMsg = 0;
 char msg[20];
-String TOPIC = "LilyGo";
-String TOPICwait = "LilyGo";
-String CLIENTID = "LilyGo";
+String TOPIC = "TTGO";
+String TOPICwait = "TTGO";
+String CLIENTID = "TTGO";
 
 /////////////////////////////////////////////////////////////////////
 void setup()
@@ -87,7 +95,8 @@ void setup()
   display.fillScreen(GxEPD_WHITE);
   display.setTextColor(GxEPD_BLACK);
   display.setFont(&FreeMonoBold9pt7b);
-  
+
+/*  
   // SD Card setup
   display.setCursor(5, 10);
   display.println("SD Card status: ");
@@ -102,46 +111,49 @@ void setup()
   display.println("SD CARD available");
   }
   display.updateWindow(0, 0,  249,  127, true);
-  delay(1000);
+  delay(10);
+*/
   
+/*
   // test WIFi and print available networks
   display.fillScreen(GxEPD_WHITE);
   testWiFi();
   delay(1000);
+*/
 
   // Connect to local network
-  display.fillScreen(GxEPD_WHITE);
   setup_wifi();
-  delay(1000);
+  delay(10);
 
   //get the time from NTP server using wifi
   if (wifiOK) {
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  printLocalTime();
+    Serial.println("getting NTP time");
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    printLocalTime();
   }
+  delay(10);
+  
 
   // MQTT - set topic based on MAC address
-  byte buf[6];
-  char macAdd[12];
-  WiFi.macAddress(buf);
-  sprintf(macAdd, "%02X%02X%02X%02X%02X%02X", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
-  CLIENTID = macAdd;
-  printDebug("Client ID set to: " + String(macAdd));
-  if (String(macAdd) == "30AEA421E24C") {
-    TOPIC = "gwen/test/test";
-    TOPICwait = "gwen/listening/test";
+  Serial.println("Setting MQTT");
+  if (CLIENTID == "F008D1C930BC") {
+    TOPIC = "ESP32";
+    TOPICwait = "ESP32/listen";
+    Serial.println("TOPIC = ESP32, TOPICwait = ESP32/listen");
   }
-  if (String(macAdd) == String("F008D1C930BC")) {
-    TOPIC = "OtherLily";
-    TOPICwait = "OtherLily/listen";
+  else {
+    TOPIC = "Other";
+    TOPICwait = "Other/listen";
+    Serial.println("TOPIC = Other, TOPICwait = Other/listen");
   }  
-  
   // MQTT:  configure the MQTT server with IPaddress and port
   client.setServer(mqtt_server.c_str(), 1883);
+/*  
   client.setCallback(receivedCallback); // callback for subscribed topic
   if (!client.connected()) {  // if client was disconnected then try to reconnect again
     mqttconnect();
   }
+*/
 }
 
 //////////////////////////////////////////////////////////////////
@@ -159,7 +171,8 @@ void loop()
     printLocalTime();
     }
     showPartialUpdate(temperature);
-    String savePacket = String(nsamples) + "," + String(temperature) + "\n";
+    String savePacket = String(datestring) + ", " + String(temperature) + "\n";
+    Serial.println(savePacket);
     csvOutStr += savePacket;
     nsamples += 1;
     
@@ -187,51 +200,57 @@ void printLocalTime()
     Serial.println("Failed to obtain time");
     return;
   }
-  strftime(datestring,19, "%Y/%m/%d %H:%M:%S", &timeinfo);
+  strftime(datestring, 19, "%y/%m/%d %H:%M:%S", &timeinfo);
   Serial.println(datestring);
 }
 
 void setup_wifi() {
-  delay(10);
-  // We start by connecting to a WiFi network
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-  display.setRotation(1);
   display.fillScreen(GxEPD_WHITE);
   display.setTextColor(GxEPD_BLACK);
   display.setFont(&FreeMonoBold9pt7b);
   display.setCursor(5, 10);
   display.println("Connecting to: ");
-  display.println(ssid);
-  display.updateWindow(0, 0,  249,  127, true);
+  display.print(ssid);
+//  display.updateWindow(0, 0,  249,  127, true);
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.print(ssid);
   WiFi.begin(ssid, password);
   int i = 0;
   while ((WiFi.status() != WL_CONNECTED) & (i < 10)) {
     delay(500);
     i++;
-    Serial.print(".");
-    display.print(".");
+    Serial.print(" .");
+    display.print(" .");
     display.updateWindow(0, 0,  249,  127, true);
-    wifiOK = false;
   }
-  if (wifiOK) {
-  Serial.println("");
+  if (WiFi.status() == WL_CONNECTED) {
+  wifiOK = true;
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
-  display.println("\n");
+  display.println();
   display.println("WiFi connected");
   display.println("IP address: ");
   display.println(WiFi.localIP());
+/*
+  byte buf[6];
+  char macAdd[12];
+  WiFi.macAddress(buf);
+  sprintf(macAdd, "%02X%02X%02X%02X%02X%02X", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
+  CLIENTID = macAdd;
+  Serial.println("MQTT ID: " + String(macAdd));
+  display.println("MQTT ID: " + String(macAdd));
+*/  
+  display.updateWindow(0, 0,  249,  127, true);
   } else {
   Serial.println("");
   Serial.println("WiFi not connected");
   display.println("\n");
-  display.println("WiFi not connected"); 
+  display.println("WiFi not connected");
+  display.updateWindow(0, 0,  249,  127, true); 
   }
-  display.updateWindow(0, 0,  249,  127, true);
-  delay(1000);
+  delay(10);
 }
 
 void testWiFi()
@@ -305,14 +324,13 @@ void writeData2SDcard (){
 
 void showPartialUpdate(float temperature)
 {
-  Serial.println("Updating display ...");
+//  Serial.println("Updating display ...");
   String temperatureString = String(temperature,2);
-  Serial.println(temperatureString);
-  display.setRotation(1);
+//  Serial.println(temperatureString);
   display.fillScreen(GxEPD_WHITE);
   display.setTextColor(GxEPD_BLACK);
-  display.setCursor(20, 40);
   display.setFont(&FreeMonoBold24pt7b);
+  display.setCursor(20, 40);
   display.print(temperatureString);
   display.setCursor(170, 40);
   display.setFont(&FreeMonoBold12pt7b);
@@ -320,10 +338,58 @@ void showPartialUpdate(float temperature)
   if (wifiOK) {
   display.setCursor(20, 70);
   display.print(ssid);
-  display.setCursor(20, 90);
+  display.setCursor(5, 90);
   display.setFont(&FreeMonoBold9pt7b);
   display.print(datestring);
   }
 //  display.updateWindow(0, 0, GxEPD_WIDTH, GxEPD_HEIGHT, true);
   display.updateWindow(0, 0,  249,  127, true);
+}
+
+/* MQTT Message Recd Callback */
+void receivedCallback(char* topic, byte* payload, unsigned int length) {
+  Serial.println("Message received: " + String(topic));
+  Serial.println("payload: ");
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  }
+  payload[length] = '\0'; // Make payload a string by NULL terminating it.
+  int pwmVal = atoi((char *)payload);
+  Serial.println("Payload String is" + String(pwmVal));
+  sleepTime = pwmVal;
+}
+
+
+/* MQTT Connect */
+void mqttconnect() {
+  /* Loop until reconnected */
+  int tryCount = 0; int maxTries = 10;
+  while (!client.connected()) {
+    Serial.println("MQTT connecting ...");
+    /* client ID */
+    String clientId = CLIENTID;
+    /* connect now */
+    if (client.connect(clientId.c_str(), NULL, NULL, NULL, NULL, NULL, NULL, false)) {
+      Serial.println("connected");
+      /*
+        // subscribe topic with default QoS 0
+        String updateTOPIC = String(TOPIC) + String("/intervalSec");
+        char *cstr = new char[updateTOPIC.length() + 1];
+        strcpy(cstr, updateTOPIC.c_str());
+        Serial.println(cstr);
+        client.subscribe(cstr,1);
+      */
+    } else {
+      Serial.println("failed, status code =" + String(client.state()));
+      Serial.println("try again in 5 seconds");
+      delay(5000); /* Wait 5 seconds before retrying */
+    }
+    tryCount += 1;
+    if (tryCount > maxTries) {
+      esp_sleep_enable_timer_wakeup(5 * 60 * uS_TO_S_FACTOR);
+      Serial.println(".. going to sleep for 5 min to try to reconnect to MQTT "); // this avoids flatening the battery
+      delay(20);
+      esp_deep_sleep_start();
+    }
+  }
 }

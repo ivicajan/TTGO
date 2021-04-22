@@ -73,6 +73,70 @@ String TOPICwait = "LilyGo";
 String CLIENTID = "LilyGo";
 
 
+
+void setup()
+{
+  Serial.begin(115200);
+  
+  ts.setResolution(3);  // resolution for temp sensor
+  display.init();
+  display.setRotation(1);
+  display.fillScreen(GxEPD_WHITE);
+  display.setTextColor(GxEPD_BLACK);
+  display.setFont(&FreeMonoBold9pt7b);
+  display.setCursor(5, 10);
+  display.println("SD Card status: ");
+  Serial.println("SD Card status: ");
+  SPI.begin(SDCARD_CLK, SDCARD_MISO, SDCARD_MOSI, SDCARD_SS);
+  if (!SD.begin(SDCARD_SS, SPI)){
+  Serial.println("No SD CARD available");
+  display.println("No SD CARD available");
+  } else {
+  sdOK = true;
+  Serial.println("SD CARD available");
+  display.println("SD CARD available");
+  }
+  display.updateWindow(0, 0,  249,  127, true);
+  delay(1000);
+  
+// test WIFi and print available networks
+  display.fillScreen(GxEPD_WHITE);
+  testWiFi();
+  delay(1000);
+  display.fillScreen(GxEPD_WHITE);
+  setup_wifi();
+  delay(1000);
+  display.fillScreen(GxEPD_WHITE);
+
+  //init and get the time
+  if (wifiOK) {
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  printLocalTime();
+  }
+}
+
+void loop()
+{  
+
+  previousTemperature = temperature;
+  temperature = ts.getTemperature();
+
+  if(previousTemperature!=temperature)
+  {
+    printLocalTime();
+    showPartialUpdate(temperature);
+    String sendPacket = String(nsamples) + "," + String(temperature) + "\n";
+    csvOutStr += sendPacket;
+    nsamples += 1;
+    
+  }
+
+  if (nsamples > nSamplesFileWrite) {  // only write after collecting a good number of samples
+//  writeData2SDcard();
+    }
+    delay(5000);
+}
+
 void printLocalTime()
 {
   struct tm timeinfo;
@@ -172,7 +236,7 @@ void testWiFi()
     delay(1000);
 }
 
-void writeData2Flash (){
+void writeData2SDcard (){
   file = SD.open(csvFileName, FILE_APPEND);
   display.setRotation(1);
   display.fillScreen(GxEPD_WHITE);
@@ -187,7 +251,6 @@ void writeData2Flash (){
     if (file.println(csvOutStr)) {
       file.close();
       csvOutStr = ""; nsamples = 0;
-      //lastFileWrite = String(mhour, DEC) + ":" + String(mminute, DEC) + ":" + String(msecond, DEC);
       lastFileWrite = String(nsamples);  
     } else {
       lastFileWrite = "FAILED WRITE";
@@ -195,69 +258,6 @@ void writeData2Flash (){
   }
   display.updateWindow(0, 0,  249,  127, true);
   delay(1000);
-}
-
-void setup()
-{
-  Serial.begin(115200);
-  
-  ts.setResolution(3);  // resolution for temp sensor
-  display.init();
-  display.setRotation(1);
-  display.fillScreen(GxEPD_WHITE);
-  display.setTextColor(GxEPD_BLACK);
-  display.setFont(&FreeMonoBold9pt7b);
-  display.setCursor(5, 10);
-  display.println("SD Card status: ");
-  Serial.println("SD Card status: ");
-  SPI.begin(SDCARD_CLK, SDCARD_MISO, SDCARD_MOSI, SDCARD_SS);
-  if (!SD.begin(SDCARD_SS, SPI)){
-  Serial.println("No SD CARD available");
-  display.println("No SD CARD available");
-  } else {
-  sdOK = true;
-  Serial.println("SD CARD available");
-  display.println("SD CARD available");
-  }
-  display.updateWindow(0, 0,  249,  127, true);
-  delay(1000);
-  
-// test WIFi and print available networks
-  display.fillScreen(GxEPD_WHITE);
-  testWiFi();
-  delay(1000);
-  display.fillScreen(GxEPD_WHITE);
-  setup_wifi();
-  delay(1000);
-  display.fillScreen(GxEPD_WHITE);
-
-  //init and get the time
-  if (wifiOK) {
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  printLocalTime();
-  }
-}
-
-void loop()
-{  
-
-  previousTemperature = temperature;
-  temperature = ts.getTemperature();
-
-  if(previousTemperature!=temperature)
-  {
-    printLocalTime();
-    showPartialUpdate(temperature);
-    String sendPacket = String(nsamples) + "," + String(temperature) + "\n";
-    csvOutStr += sendPacket;
-    nsamples += 1;
-    
-  }
-
-  if (nsamples > nSamplesFileWrite) {  // only write after collecting a good number of samples
-//  writeData2SDcard();
-    }
-    delay(5000);
 }
 
 void showPartialUpdate(float temperature)

@@ -38,23 +38,25 @@
 #define nSamplesFileWrite  300      // Number of samples to store in memory before file write
 
 MCP9808 ts(24);
-
-float previousTemperature = -100.0;
-float temperature = 0;
-String csvOutStr = "";                // Buffer for output file
-String lastFileWrite = "";
-String csvFileName="/temp_data.csv";
-
-File file;                            // Data file for the SPIFFS output
-int nsamples;                         // Counter for the number of samples gathered
+WiFiClient espClient;
+PubSubClient client(espClient);
 
 GxIO_Class io(SPI, /*CS=5*/ ELINK_SS, /*DC=*/ ELINK_DC, /*RST=*/ ELINK_RESET);
 GxEPD_Class display(io, /*RST=*/ ELINK_RESET, /*BUSY=*/ ELINK_BUSY);
 
+float previousTemperature = -100.0;
+float temperature = 0;
 const char *temp_string = "Temperature \n reading setup....";
+
+String csvOutStr = "";                // Buffer for output file
+String lastFileWrite = "";
+String csvFileName="/temp_data.csv";
+File file;                            // Data file for the SPIFFS output
+int nsamples;                         // Counter for the number of samples gathered
 bool sdOK = false;
-bool wifiOK = true;
+
 // Replace the next variables with your SSID/Password combination
+bool wifiOK = true;
 const char* ssid = "naia_2g";
 const char* password = "";
 const char* ntpServer = "pool.ntp.org";
@@ -62,8 +64,6 @@ const long  gmtOffset_sec = 8*3600;
 const long  daylightOffset_sec = 0;
 char datestring[19];
 
-WiFiClient espClient;
-PubSubClient client(espClient);
 // B. MTQQ Setup: PubSubClient
 String mqtt_server = "192.168.1.101";  // piHub
 long lastMsg = 0;
@@ -72,18 +72,23 @@ String TOPIC = "LilyGo";
 String TOPICwait = "LilyGo";
 String CLIENTID = "LilyGo";
 
-
-
+/////////////////////////////////////////////////////////////////////
 void setup()
 {
   Serial.begin(115200);
   
-  ts.setResolution(3);  // resolution for temp sensor
+  // MCP9808 resolution for temp sensor  
+  ts.setResolution(3);
+
+  // DISPLAY INIT
+  SPI.begin(SPI_CLK, SPI_MISO, SPI_MOSI, ELINK_SS);
   display.init();
   display.setRotation(1);
   display.fillScreen(GxEPD_WHITE);
   display.setTextColor(GxEPD_BLACK);
   display.setFont(&FreeMonoBold9pt7b);
+  
+  // SD Card setup
   display.setCursor(5, 10);
   display.println("SD Card status: ");
   Serial.println("SD Card status: ");
@@ -99,21 +104,47 @@ void setup()
   display.updateWindow(0, 0,  249,  127, true);
   delay(1000);
   
-// test WIFi and print available networks
+  // test WIFi and print available networks
   display.fillScreen(GxEPD_WHITE);
   testWiFi();
   delay(1000);
+
+  // Connect to local network
   display.fillScreen(GxEPD_WHITE);
   setup_wifi();
   delay(1000);
-  display.fillScreen(GxEPD_WHITE);
 
-  //init and get the time
+  //get the time from NTP server using wifi
   if (wifiOK) {
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   printLocalTime();
   }
+
+  // MQTT - set topic based on MAC address
+  byte buf[6];
+  char macAdd[12];
+  WiFi.macAddress(buf);
+  sprintf(macAdd, "%02X%02X%02X%02X%02X%02X", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
+  CLIENTID = macAdd;
+  printDebug("Client ID set to: " + String(macAdd));
+  if (String(macAdd) == "30AEA421E24C") {
+    TOPIC = "gwen/test/test";
+    TOPICwait = "gwen/listening/test";
+  }
+  if (String(macAdd) == String("F008D1C930BC")) {
+    TOPIC = "OtherLily";
+    TOPICwait = "OtherLily/listen";
+  }  
+  
+  // MQTT:  configure the MQTT server with IPaddress and port
+  client.setServer(mqtt_server.c_str(), 1883);
+  client.setCallback(receivedCallback); // callback for subscribed topic
+  if (!client.connected()) {  // if client was disconnected then try to reconnect again
+    mqttconnect();
+  }
 }
+
+//////////////////////////////////////////////////////////////////
 
 void loop()
 {  
@@ -121,21 +152,33 @@ void loop()
   previousTemperature = temperature;
   temperature = ts.getTemperature();
 
+  // update temperature readings if different from the old value 
   if(previousTemperature!=temperature)
   {
+    if (wifiOK) {
     printLocalTime();
+    }
     showPartialUpdate(temperature);
-    String sendPacket = String(nsamples) + "," + String(temperature) + "\n";
-    csvOutStr += sendPacket;
+    String savePacket = String(nsamples) + "," + String(temperature) + "\n";
+    csvOutStr += savePacket;
     nsamples += 1;
     
   }
-
-  if (nsamples > nSamplesFileWrite) {  // only write after collecting a good number of samples
-//  writeData2SDcard();
+  
+  // only write after collecting a good number of samples
+  if (nsamples > nSamplesFileWrite) {  
+    Serial.println("Writing data on the SD card");
+  //  writeData2SDcard();
+    nsamples = 0;
     }
-    delay(5000);
+    delay(1000);
 }
+
+
+//////////////////////////////////////////////////////////////////
+// 
+//     LOCAL FUNCTIONS
+//
 
 void printLocalTime()
 {

@@ -1,10 +1,16 @@
 // 0. Includes
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include "time.h"
 
 // A. WiFI Setup
 const char* ssid = "naia_2g";
-const char* password = "Malinska";
+const char* password = "";
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = 8*3600;
+const long  daylightOffset_sec = 0;
+char datestring[19];
+bool wifiOK;
 
 // B. MTQQ Setup: PubSubClient
 String mqtt_server = "192.168.1.101";  // piHub
@@ -32,7 +38,7 @@ int debugSetup = 0;
 // F. Deep Sleep Header
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
 RTC_DATA_ATTR int bootCount = 0;
-RTC_DATA_ATTR int sleepTime = 10; /* Time ESP32 will go to sleep (in seconds) */
+RTC_DATA_ATTR int sleepTime = 600; /* Time ESP32 will go to sleep (in seconds) */
 
 // include library, include base class, make path known
 #include <GxEPD.h>
@@ -92,23 +98,31 @@ void setup() {
   WiFi.begin(ssid, password);
   WiFi.mode(WIFI_STA);
   int tryCount = 0; int maxTries = 10;
-  while (WiFi.status() != WL_CONNECTED) {
+  int totalCount = 0; int maxTotalTry = 10;
+  while ((WiFi.status() != WL_CONNECTED) && (totalCount < maxTotalTry)) {
     delay(500);
     Serial.print(".");
     tryCount += 1;
     if (tryCount > maxTries) {
       // esp_sleep_enable_timer_wakeup(10 * uS_TO_S_FACTOR);
       esp_sleep_enable_timer_wakeup(60 * uS_TO_S_FACTOR);
-      printDebug(".. going to sleep for 1 min to try to reconnect to WiFi "); // this avoids flatening the battery
+      printDebug(".. going to sleep for 1 min to try to reconnect to WiFi ");
       delay(20);
+      wifiOK = false;
+      totalCount += 1;
       esp_deep_sleep_start();
     }
   }
+if (totalCount < maxTotalTry) {
+  wifiOK = true;
   Serial.println("");
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
-
+  Serial.println("getting NTP time");
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  printLocalTime();
+  
   // MQTT - set topic based on MAC address
   byte buf[6];
   char macAdd[12];
@@ -174,7 +188,7 @@ void setup() {
     client.publish(TOPICwait.c_str(), "no");
     printDebug("Done .. checking for messages");
  
-
+}
   // Get and Publish Temperature
   printDebug(".. sense temperature");
   int cnt = 0;
@@ -197,17 +211,23 @@ void setup() {
   display.fillScreen(GxEPD_WHITE);
   display.setTextColor(GxEPD_BLACK);  
   display.setFont(&FreeMonoBold12pt7b);
-  display.setCursor(10, 20);
+  display.setCursor(10, 15);
   display.print(TOPIC.c_str());
-  display.setCursor(40, 80);
+  display.setCursor(40, 65);
   display.setFont(&FreeMonoBold24pt7b);
   display.print(msg);
   display.setFont(&FreeMonoBold12pt7b);
-  display.setCursor(160, 80);
+  display.setCursor(160, 65);
   display.print("degC");
-  display.updateWindow(0, 0,  249,  127, true);
-  
+  if (wifiOK) {
+  display.setFont(&FreeMonoBold9pt7b);
+  display.setCursor(60, 90);
+  display.print(ssid);
+  display.setCursor(20, 110);
+  display.print(datestring);
   client.publish(TOPIC.c_str(), msg);
+  }  
+  display.updateWindow(0, 0,  249,  127, true);
   delay(500);
 
 
@@ -221,6 +241,18 @@ void setup() {
 /********** MAIN LOOP */
 void loop() {
 
+// never get here as it is sleeping
+}
+
+void printLocalTime()
+{
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  strftime(datestring, 19, "%y/%m/%d %H:%M:%S", &timeinfo);
+  Serial.println(datestring);
 }
 
 /* MQTT Message Recd Callback */

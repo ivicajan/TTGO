@@ -2,6 +2,9 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include "time.h"
+#include "SD.h"
+#include "FS.h"
+#include "SPI.h"
 
 // A. WiFI Setup
 const char* ssid = "naia_2g";
@@ -11,6 +14,7 @@ const long  gmtOffset_sec = 8*3600;
 const long  daylightOffset_sec = 0;
 char datestring[19];
 bool wifiOK;
+bool sdOK;
 
 // B. MTQQ Setup: PubSubClient
 String mqtt_server = "192.168.1.101";  // piHub
@@ -20,8 +24,9 @@ PubSubClient client(espClient);
 long lastMsg = 0;
 char msg[20];
 String TOPIC = "dnevna_soba";
-String TOPICwait = "LabLily";
-String CLIENTID = "LabLily";
+String TOPICwait = "listen";
+String CLIENTID = "esp32";
+String dataMessage;
 
 // C. Temperature Sensor Header
 #include <Wire.h>
@@ -40,10 +45,11 @@ int debugSetup = 0;
 RTC_DATA_ATTR int bootCount = 0;
 RTC_DATA_ATTR int sleepTime = 600; /* Time ESP32 will go to sleep (in seconds) */
 
+// Save reading number on RTC memory
+RTC_DATA_ATTR int readingID = 0;
+
 // include library, include base class, make path known
 #include <GxEPD.h>
-#include "SD.h"
-#include "SPI.h"
 
 #include <GxGDEH0213B73/GxGDEH0213B73.h>  // 2.13" b/w newer panel
 
@@ -76,10 +82,6 @@ RTC_DATA_ATTR int sleepTime = 600; /* Time ESP32 will go to sleep (in seconds) *
 GxIO_Class io(SPI, /*CS=5*/ ELINK_SS, /*DC=*/ ELINK_DC, /*RST=*/ ELINK_RESET);
 GxEPD_Class display(io, /*RST=*/ ELINK_RESET, /*BUSY=*/ ELINK_BUSY);
 
-SPIClass sdSPI(VSPI);
-
-const char *skuNum = "JDM SKU:H239";
-bool sdOK = false;
 
 /********** MAIN SETUP */
 void setup() {
@@ -113,6 +115,52 @@ void setup() {
       esp_deep_sleep_start();
     }
   }
+
+// Initialize SD card
+  SPIClass spi = SPIClass(VSPI);
+  spi.begin(SDCARD_CLK, SDCARD_MISO, SDCARD_MOSI, SDCARD_SS);
+
+  if (!SD.begin(SDCARD_SS,spi,80000000)) {
+    Serial.println("Card Mount Failed");
+    sdOK = false;
+//    return;
+  } else {
+  sdOK = true;
+  uint8_t cardType = SD.cardType();
+  if(cardType == CARD_NONE){
+    Serial.println("No SD card attached");
+    return;
+  }
+
+  Serial.print("SD Card Type: ");
+  if(cardType == CARD_MMC){
+    Serial.println("MMC");
+  } else if(cardType == CARD_SD){
+    Serial.println("SDSC");
+  } else if(cardType == CARD_SDHC){
+    Serial.println("SDHC");
+  } else {
+    Serial.println("UNKNOWN");
+  }
+
+  uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+  Serial.printf("SD Card Size: %lluMB\n", cardSize);
+
+  // If the temp_data.txt file doesn't exist
+  // Create a file on the SD card and write the data labels
+  File file = SD.open("/temp_data.txt");
+  if(!file) {
+    Serial.println("File doens't exist");
+    Serial.println("Creating file...");
+    writeFile(SD, "/temp_data.txt", "Reading ID, Date/Hour, Temperature \r\n");
+  }
+  else {
+    Serial.println("File already exists");  
+  }
+  file.close();
+  }
+  
+// setup stuff if connected to net  
 if (totalCount < maxTotalTry) {
   wifiOK = true;
   Serial.println("");
@@ -130,10 +178,6 @@ if (totalCount < maxTotalTry) {
   sprintf(macAdd, "%02X%02X%02X%02X%02X%02X", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
   CLIENTID = macAdd;
   printDebug("Client ID set to: " + String(macAdd));
-  if (String(macAdd) == "30AEA421E24C") {
-    TOPIC = "gwen/test/test";
-    TOPICwait = "gwen/listening/test";
-  }
   if (String(macAdd) == String("F008D1C930BC")) {
     TOPIC = "dnevna_soba/temp";
     TOPICwait = "dnevna_soba/listen";
@@ -141,30 +185,6 @@ if (totalCount < maxTotalTry) {
   if (String(macAdd) == "30AEA4250034") {
     TOPIC = "gwen/temp/unknown";
     TOPICwait = "gwen/listening/temp/unknown";
-  }
-  if (String(macAdd) == String("7C9EBDFB05E0")) {
-    TOPIC = "LabLily";
-    TOPICwait = "LabLily/listen";
-  }
-  if (String(macAdd) == "30AEA4250060") {
-    TOPIC = "gwen/temp/upperroof";
-    TOPICwait = "gwen/listening/temp/upperroof";
-  }
-  if (String(macAdd) == "3C71BF1E0EDC") {
-    TOPIC = "gwen/temp/jkbedroom";
-    TOPICwait = "gwen/listening/temp/jkbedroom";
-  }
-  if (String(macAdd) == "30AEA424FFCC") {
-    TOPIC = "gwen/temp/alyssa";
-    TOPICwait = "gwen/listening/temp/alyssa";
-  }
-  if (String(macAdd) == "30AEA424FFE4") {
-    TOPIC = "gwen/temp/outsideback";
-    TOPICwait = "gwen/listening/temp/outsideback";
-  }
-  if (String(macAdd) == "30AEA424F7B0") {
-    TOPIC = "gwen/temp/lowerroof";
-    TOPICwait = "gwen/listening/temp/lowerroof";
   }
   if (String(macAdd) == "B4E62DB28981") {
     TOPIC = "gwen/temp/den";
@@ -230,7 +250,13 @@ if (totalCount < maxTotalTry) {
   display.updateWindow(0, 0,  249,  127, true);
   delay(500);
 
-
+ //Append the data to file
+  if (sdOK) {
+  logSDCard(); 
+  // Increment readingID on every new reading
+  readingID++;
+  }
+    
   esp_sleep_enable_timer_wakeup(sleepTime * uS_TO_S_FACTOR);
   printDebug(".. going to sleep now");
   delay(20);
@@ -319,10 +345,50 @@ void printDebug(String txt) {
   }
 }
 
-
 String ipToString(IPAddress ip) {
   String s = "";
   for (int i = 0; i < 4; i++)
     s += i  ? "." + String(ip[i]) : String(ip[i]);
   return s;
+}
+
+// Write the sensor readings on the SD card
+void logSDCard() {
+  dataMessage = String(readingID) + " , " + String(datestring) + " , " + 
+                String(msg) + "\r\n";
+  Serial.print("Save data: ");
+  Serial.println(dataMessage);
+  appendFile(SD, "/temp_data.txt", dataMessage.c_str());
+}
+
+// Write to the SD card
+void writeFile(fs::FS &fs, const char * path, const char * message) {
+  Serial.printf("Writing file: %s\n", path);
+  File file = fs.open(path, FILE_WRITE);
+  if(!file) {
+    Serial.println("Failed to open file for writing");
+    return;
+  }
+  if(file.print(message)) {
+    Serial.println("File written");
+  } else {
+    Serial.println("Write failed");
+  }
+  file.close();
+}
+
+// Append data to the SD card
+void appendFile(fs::FS &fs, const char * path, const char * message) {
+  Serial.printf("Appending to file: %s\n", path);
+  File file = fs.open(path, FILE_APPEND);
+  if(!file) {
+    Serial.println("Failed to open file for appending");
+    return;
+  }
+  if(file.print(message)) {
+    Serial.println("Message appended");
+  } else {
+    Serial.println("Append failed");
+  }
+  file.close();
 }

@@ -36,7 +36,7 @@ Adafruit_MCP9808 tempsensor = Adafruit_MCP9808();  // Create the MCP9808 tempera
 #define SDCARD_MISO 2
 
 // ESP GPIO 33 -> GPS RX , ESP GPIO 32 -> GPS TX
-static const int RXPin = 32, TXPin = 33;
+static const int RXPin = 33, TXPin = 32;
 static const uint32_t GPSBaud = 9600;
 
 #define BUTTON_PIN 39
@@ -49,7 +49,10 @@ SoftwareSerial ss(RXPin, TXPin);
 
 char msg[20];
 bool sdOK;
+String csvOutStr = "";
+String hour,minute,second,year,month,day,tTime,tDate;
 String dataMessage;
+int readingID = 0;
 
 /********** MAIN SETUP *************/
 
@@ -119,7 +122,7 @@ void setup() {
     }
     else {
       Serial.println("File /temp_GPS_data.txt already exists");  
-      display.println("/temp_GPS_data.txt OK");  
+      display.println("temp_GPS_data.txt OK");  
     }
     file.close();
   }
@@ -149,23 +152,61 @@ void setup() {
   ss.begin(GPSBaud);
   if (ss.available() > 0)
   {
-    gps.encode(ss.read());
-    Serial.print(F("LOCATION   Fix Age="));
-    Serial.print(gps.location.age());
-    Serial.print(F("ms Raw Lat="));
-    Serial.print(gps.location.rawLat().negative ? "-" : "+");
-    Serial.print(gps.location.rawLat().deg);
-    Serial.print("[+");
-    Serial.print(gps.location.rawLat().billionths);
-    Serial.print(F(" billionths],  Raw Long="));
-    Serial.print(gps.location.rawLng().negative ? "-" : "+");
-    Serial.print(gps.location.rawLng().deg);
-    Serial.print("[+");
-    Serial.print(gps.location.rawLng().billionths);
-    Serial.print(F(" billionths],  Lat="));
-    Serial.print(gps.location.lat(), 6);
-    Serial.print(F(" Long="));
-    Serial.println(gps.location.lng(), 6);    
+  gps.encode(ss.read());
+  hour = String(gps.time.hour());
+  minute = String(gps.time.minute());
+  second = String(gps.time.second());
+  year = String(gps.date.year());
+  month = String(gps.date.month());
+  day = String(gps.date.day());      
+  if (hour.length() == 1)
+  {
+     hour = "0" + hour;     
+  }
+  if (minute.length() == 1)
+  {
+     minute = "0" + minute;     
+  }
+  if (second.length() == 1)
+  {
+     second = "0" + second;     
+  } 
+  if (month.length() == 1)
+  {
+     month = "0" + month;     
+  }  
+  if (day.length() == 1)
+  {
+     day = "0" + day;     
+  }
+  tDate = year + "-" + month + "-" + day;
+  tTime = hour + ":" + minute + ":" + second;
+  String tLocation = String(gps.location.lng(), 6) + "," + String(gps.location.lat(), 6) + "," + String(gps.location.age());
+  String tDateTime = tDate + " " + tTime;
+  String tSpeed = String(gps.speed.kmph(),1);
+  float c = tempsensor.readTempC();
+  String tTemp = String(c,1);
+//  snprintf (msg, 20, "%lf", c);
+  csvOutStr = tDateTime + "," + tLocation + "," + tSpeed + "," + tTemp + "\n";
+  Serial.println(csvOutStr);
+  display.setRotation(1);
+  display.fillScreen(GxEPD_WHITE);
+  display.setTextColor(GxEPD_BLACK);  
+  display.setFont(&FreeMonoBold12pt7b);
+  display.setCursor(5, 5);
+  display.print(tDateTime.c_str());
+  display.setCursor(40, 65);
+  display.setFont(&FreeMonoBold24pt7b);
+  display.print(tSpeed);
+  display.setFont(&FreeMonoBold12pt7b);
+  display.setCursor(160, 65);
+  display.print("km/h");
+  display.setFont(&FreeMonoBold9pt7b);
+  display.setCursor(60, 90);
+  display.print(tLocation);
+  display.setCursor(20, 110);
+  display.print(tTemp.c_str());
+  display.updateWindow(0, 0,  249,  127, true);        
   } else {
     Serial.println("GPS not available");
   }
@@ -178,15 +219,86 @@ void setup() {
 
 /********** MAIN LOOP */
 void loop() {
-//  while (ss.available() > 0)
-//    if (gps.encode(ss.read()))
+ if (ss.available() > 0)
+  {
+    gps.encode(ss.read());
+    hour = String(gps.time.hour());
+    minute = String(gps.time.minute());
+    second = String(gps.time.second());
+    year = String(gps.date.year());
+    month = String(gps.date.month());
+    day = String(gps.date.day());      
+    if (hour.length() == 1)
+    {
+       hour = "0" + hour;     
+    }
+    if (minute.length() == 1)
+    {
+       minute = "0" + minute;     
+    }
+    if (second.length() == 1)
+    {
+       second = "0" + second;     
+    } 
+    if (month.length() == 1)
+    {
+       month = "0" + month;     
+    }  
+    if (day.length() == 1)
+    {
+       day = "0" + day;     
+    }
+    tDate = year + "-" + month + "-" + day;
+    tTime = hour + ":" + minute + ":" + second;
+    String tLocation = String(gps.location.lng(), 7) + "," + String(gps.location.lat(), 7) + "," + String(gps.satellites.value());
+    String tDateTime = tDate + " " + tTime;
+    String tSpeed = String(gps.speed.kmph(),0);
+    float c = tempsensor.readTempC();
+    String tTemp = String(c,0);
+    csvOutStr = tDateTime + "," + tLocation + "," + tSpeed + "," + tTemp + "\n";
+    Serial.println(csvOutStr);
+    display.setRotation(1);
+    display.fillScreen(GxEPD_WHITE);
+    display.setTextColor(GxEPD_BLACK);  
+    display.setFont(&FreeMonoBold9pt7b);
+    display.setCursor(15, 13);
+    display.print(tDateTime.c_str());
+    display.setCursor(5, 60);
+    display.setFont(&FreeMonoBold24pt7b);
+    display.print(tSpeed);
+//    display.print(String(120));
+    display.setFont(&FreeMonoBold9pt7b);
+    display.setCursor(90, 60);
+    display.print("km/h");
+    display.setCursor(145, 60);
+    display.setFont(&FreeMonoBold24pt7b);      
+    display.print(tTemp.c_str());
+//    display.print(String(120));
+    display.setFont(&FreeMonoBold12pt7b);
+    display.setCursor(230, 60);
+    display.print("C");
+    display.setFont(&FreeMonoBold9pt7b);
+    display.setCursor(5, 100);
+    display.print(tLocation);
+    display.setCursor(20, 110);
+    display.setFont(&FreeMonoBold12pt7b);
+//    client.publish(TOPIC.c_str(), msg);  
+    display.updateWindow(0, 0,  249,  127, true);    
+    if (sdOK) {
+//    logSDCard(); 
+    // Increment readingID on every new reading
+    readingID++;
+    }    
+  } else {
+    Serial.println("GPS not available");
+  }
+  delay(2000);
 }
 
 
 // Write the sensor readings on the SD card
 void logSDCard() {
-//  dataMessage = String(readingID) + " , " + String(datestring) + " , " + 
-//                String(msg) + "\r\n";
+  dataMessage = String(readingID) + " , " + String(csvOutStr) + "\r\n";
   Serial.print("Save data: ");
   Serial.println(dataMessage);
   appendFile(SD, "/temp_GPS_data.txt", dataMessage.c_str());

@@ -8,7 +8,7 @@
 
 // A. WiFI Setup
 const char* ssid = "naia_2g";
-const char* password = "";
+const char* password = "Malinska";
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 8*3600;
 const long  daylightOffset_sec = 0;

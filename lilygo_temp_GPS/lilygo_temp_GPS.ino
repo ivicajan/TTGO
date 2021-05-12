@@ -1,10 +1,9 @@
-
+// standard includes
 #include "SD.h"
 #include "FS.h"
 #include "SPI.h"
-#include <HardwareSerial.h>
+#include <SoftwareSerial.h>
 #include <TinyGPS++.h>
-
 
 // Temperature Sensor Header
 #include <Wire.h>
@@ -13,15 +12,12 @@ Adafruit_MCP9808 tempsensor = Adafruit_MCP9808();  // Create the MCP9808 tempera
 
 // include library, include base class, make path known
 #include <GxEPD.h>
-
 #include <GxGDEH0213B73/GxGDEH0213B73.h>  // 2.13" b/w newer panel
-
 // FreeFonts from Adafruit_GFX
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeMonoBold12pt7b.h>
 #include <Fonts/FreeMonoBold18pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
-
 #include <GxIO/GxIO_SPI/GxIO_SPI.h>
 #include <GxIO/GxIO.h>
 
@@ -39,29 +35,26 @@ Adafruit_MCP9808 tempsensor = Adafruit_MCP9808();  // Create the MCP9808 tempera
 #define SDCARD_MOSI 15
 #define SDCARD_MISO 2
 
-#define MCP_SDA 21
-#define MCP_SCL 22
+// ESP GPIO 33 -> GPS RX , ESP GPIO 32 -> GPS TX
+static const int RXPin = 32, TXPin = 33;
+static const uint32_t GPSBaud = 9600;
 
-#define GPS_TX 33 // ESP GPIO 33 -> GPS RX
-#define GPS_RX 32 // ESP GPIO 32 -> GPS TX
-#define GPS_BAUD 9600
 #define BUTTON_PIN 39
 
 GxIO_Class io(SPI, /*CS=5*/ ELINK_SS, /*DC=*/ ELINK_DC, /*RST=*/ ELINK_RESET);
 GxEPD_Class display(io, /*RST=*/ ELINK_RESET, /*BUSY=*/ ELINK_BUSY);
 
 TinyGPSPlus gps;
-SoftwareSerial ss(GPS_TX, GPS_RX);
+SoftwareSerial ss(RXPin, TXPin);
 
-float temperature ;
-char  ctemp[4] ;
+char msg[20];
 bool sdOK;
-String dataMessage = "";                // Buffer for output file
-
+String dataMessage;
 
 /********** MAIN SETUP *************/
 
 void setup() {
+  Serial.begin(115200);
   Serial.println("Setup...");
 
 //-------------- ePaper
@@ -76,9 +69,7 @@ void setup() {
   display.setFont(&FreeMonoBold9pt7b);
 
 // Initialize SD card
-  Serial.println("SD Card ...");
-  display.println("SD Card...");
-  
+  Serial.println("SD Card ...");  
   SPIClass spi = SPIClass(VSPI);
   spi.begin(SDCARD_CLK, SDCARD_MISO, SDCARD_MOSI, SDCARD_SS);
   if (!SD.begin(SDCARD_SS,spi,80000000)) {
@@ -95,7 +86,7 @@ void setup() {
       return;
     }
     Serial.print("SD Card Type: ");
-    display.println("SD Card Type: ");
+    display.print("SD Card Type: ");
     if (cardType == CARD_MMC) {
       Serial.println("MMC");
       display.println("MMC");
@@ -114,7 +105,10 @@ void setup() {
     }
 
     uint64_t cardSize = SD.cardSize() / (1024 * 1024);
-    Serial.printf("SD Card Size: %lluMB\n", cardSize);
+    Serial.printf("SD Card Size: %llu MB\n", cardSize);
+    char sdSize[20];
+    sprintf(sdSize,"%lluMB", cardSize);
+    display.println("SD Card Size: " + String(sdSize));
     // If the temp_GPS_data.txt file doesn't exist
     // Create a file on the SD card and write the data labels
     File file = SD.open("/temp_GPS_data.txt");
@@ -125,22 +119,56 @@ void setup() {
     }
     else {
       Serial.println("File /temp_GPS_data.txt already exists");  
+      display.println("/temp_GPS_data.txt OK");  
     }
     file.close();
   }
 
 // init temp sensors 
-  temperature = tempsensor.readTempC();
-  sprintf(ctemp, "%3.1f",temperature); 
-  Serial.println("temp = " + String(ctemp));
+  // Get and Publish Temperature
+  Serial.println(".. sense temperature");
+  int cnt = 0;
+  while (!tempsensor.begin(0x18)) {
+    Serial.println("Couldn't find MCP9808!");
+    cnt++;
+    if (cnt > 10) {
+      return;
+    }
+    delay(1000);
+  }
+  tempsensor.shutdown_wake(0);
+  delay(250);
+  float c = tempsensor.readTempC();
+  c = tempsensor.readTempC();
+  snprintf (msg, 5, "%lf", c);
+  display.print("Temp = " + String(msg));
+  Serial.println(String(msg));
+  display.updateWindow(0, 0,  249,  127, true);
 
 // init GPS 
-  ss.begin(GPS_BAUD);
-    if (gps.encode(ss))
-      displayInfo();
-
-  Serial.println();
-  Serial.println(F("Done."));
+  ss.begin(GPSBaud);
+  if (ss.available() > 0)
+  {
+    gps.encode(ss.read());
+    Serial.print(F("LOCATION   Fix Age="));
+    Serial.print(gps.location.age());
+    Serial.print(F("ms Raw Lat="));
+    Serial.print(gps.location.rawLat().negative ? "-" : "+");
+    Serial.print(gps.location.rawLat().deg);
+    Serial.print("[+");
+    Serial.print(gps.location.rawLat().billionths);
+    Serial.print(F(" billionths],  Raw Long="));
+    Serial.print(gps.location.rawLng().negative ? "-" : "+");
+    Serial.print(gps.location.rawLng().deg);
+    Serial.print("[+");
+    Serial.print(gps.location.rawLng().billionths);
+    Serial.print(F(" billionths],  Lat="));
+    Serial.print(gps.location.lat(), 6);
+    Serial.print(F(" Long="));
+    Serial.println(gps.location.lng(), 6);    
+  } else {
+    Serial.println("GPS not available");
+  }
 
   delay(2000);
   display.updateWindow(0, 0,  249,  127, true);
@@ -150,15 +178,8 @@ void setup() {
 
 /********** MAIN LOOP */
 void loop() {
-  while (ss.available() > 0)
-    if (gps.encode(ss.read()))
-      displayInfo();
-
-  if (millis() > 5000 && gps.charsProcessed() < 10)
-  {
-    Serial.println(F("No GPS detected: check wiring."));
-    while(true);
-  }
+//  while (ss.available() > 0)
+//    if (gps.encode(ss.read()))
 }
 
 
@@ -201,54 +222,4 @@ void appendFile(fs::FS &fs, const char * path, const char * message) {
     Serial.println("Append failed");
   }
   file.close();
-}
-
-
-void displayInfo()
-{
-  Serial.print(F("Location: ")); 
-  if (gps.location.isValid())
-  {
-    Serial.print(gps.location.lat(), 6);
-    Serial.print(F(","));
-    Serial.print(gps.location.lng(), 6);
-  }
-  else
-  {
-    Serial.print(F("INVALID"));
-  }
-
-  Serial.print(F("  Date/Time: "));
-  if (gps.date.isValid())
-  {
-    Serial.print(gps.date.month());
-    Serial.print(F("/"));
-    Serial.print(gps.date.day());
-    Serial.print(F("/"));
-    Serial.print(gps.date.year());
-  }
-  else
-  {
-    Serial.print(F("INVALID"));
-  }
-
-  Serial.print(F(" "));
-  if (gps.time.isValid())
-  {
-    if (gps.time.hour() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.hour());
-    Serial.print(F(":"));
-    if (gps.time.minute() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.minute());
-    Serial.print(F(":"));
-    if (gps.time.second() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.second());
-    Serial.print(F("."));
-    if (gps.time.centisecond() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.centisecond());
-  }
-  else
-  {
-    Serial.print(F("INVALID"));
-  }
 }

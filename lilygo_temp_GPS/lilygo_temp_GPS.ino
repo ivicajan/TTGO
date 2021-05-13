@@ -2,7 +2,7 @@
 #include "SD.h"
 #include "FS.h"
 #include "SPI.h"
-#include <SoftwareSerial.h>
+#include <HardwareSerial.h>
 #include <TinyGPS++.h>
 
 // Temperature Sensor Header
@@ -45,7 +45,7 @@ GxIO_Class io(SPI, /*CS=5*/ ELINK_SS, /*DC=*/ ELINK_DC, /*RST=*/ ELINK_RESET);
 GxEPD_Class display(io, /*RST=*/ ELINK_RESET, /*BUSY=*/ ELINK_BUSY);
 
 TinyGPSPlus gps;
-SoftwareSerial ss(RXPin, TXPin);
+HardwareSerial ss(1);
 
 char msg[20];
 bool sdOK;
@@ -149,7 +149,7 @@ void setup() {
   display.updateWindow(0, 0,  249,  127, true);
 
 // init GPS 
-  ss.begin(GPSBaud);
+  ss.begin(GPSBaud, SERIAL_8N1, RXPin, TXPin);
   if (ss.available() > 0)
   {
   gps.encode(ss.read());

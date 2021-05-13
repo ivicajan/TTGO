@@ -46,13 +46,16 @@ GxEPD_Class display(io, /*RST=*/ ELINK_RESET, /*BUSY=*/ ELINK_BUSY);
 
 TinyGPSPlus gps;
 HardwareSerial ss(1);
-
+const int timeOffset = -8;  // Pacific Daylight Time (AWST)
 char msg[20];
 bool sdOK;
 String csvOutStr = "";
 String hour,minute,second,year,month,day,tTime,tDate;
 String dataMessage;
 int readingID = 0;
+int gpsLastSecond = -1;
+
+#define  timeOffset = 8*3600 ;
 
 /********** MAIN SETUP *************/
 
@@ -150,84 +153,40 @@ void setup() {
 
 // init GPS 
   ss.begin(GPSBaud, SERIAL_8N1, RXPin, TXPin);
-  if (ss.available() > 0)
-  {
-  gps.encode(ss.read());
-  hour = String(gps.time.hour());
-  minute = String(gps.time.minute());
-  second = String(gps.time.second());
-  year = String(gps.date.year());
-  month = String(gps.date.month());
-  day = String(gps.date.day());      
-  if (hour.length() == 1)
-  {
-     hour = "0" + hour;     
-  }
-  if (minute.length() == 1)
-  {
-     minute = "0" + minute;     
-  }
-  if (second.length() == 1)
-  {
-     second = "0" + second;     
-  } 
-  if (month.length() == 1)
-  {
-     month = "0" + month;     
-  }  
-  if (day.length() == 1)
-  {
-     day = "0" + day;     
-  }
-  tDate = year + "-" + month + "-" + day;
-  tTime = hour + ":" + minute + ":" + second;
-  String tLocation = String(gps.location.lng(), 6) + "," + String(gps.location.lat(), 6) + "," + String(gps.location.age());
-  String tDateTime = tDate + " " + tTime;
-  String tSpeed = String(gps.speed.kmph(),1);
-  float c = tempsensor.readTempC();
-  String tTemp = String(c,1);
-//  snprintf (msg, 20, "%lf", c);
-  csvOutStr = tDateTime + "," + tLocation + "," + tSpeed + "," + tTemp + "\n";
-  Serial.println(csvOutStr);
-  display.setRotation(1);
-  display.fillScreen(GxEPD_WHITE);
-  display.setTextColor(GxEPD_BLACK);  
-  display.setFont(&FreeMonoBold12pt7b);
-  display.setCursor(5, 5);
-  display.print(tDateTime.c_str());
-  display.setCursor(40, 65);
-  display.setFont(&FreeMonoBold24pt7b);
-  display.print(tSpeed);
-  display.setFont(&FreeMonoBold12pt7b);
-  display.setCursor(160, 65);
-  display.print("km/h");
-  display.setFont(&FreeMonoBold9pt7b);
-  display.setCursor(60, 90);
-  display.print(tLocation);
-  display.setCursor(20, 110);
-  display.print(tTemp.c_str());
-  display.updateWindow(0, 0,  249,  127, true);        
-  } else {
-    Serial.println("GPS not available");
-  }
-
-  delay(2000);
-  display.updateWindow(0, 0,  249,  127, true);
+  SerialGPSDecode(ss, gps);
   delay(500);
 
 }
 
 /********** MAIN LOOP */
 void loop() {
- if (ss.available() > 0)
-  {
-    gps.encode(ss.read());
+ 
+    SerialGPSDecode(ss, gps);
+    delay(10);
+    if (sdOK) {
+//    logSDCard(); 
+    // Increment readingID on every new reading
+    readingID++;
+    }    
+}
+
+//////////////////////////////////////////////////////////////////////
+
+void SerialGPSDecode(Stream &mySerial, TinyGPSPlus &myGPS) {
+    unsigned long start = millis();
+    do
+    {
+      while (ss.available() > 0)
+        gps.encode(ss.read());     
+    } while (millis() - start < 500);
+    // C. If this is a new GPS record then save it
+    if (gps.time.second() != gpsLastSecond) {
     hour = String(gps.time.hour());
     minute = String(gps.time.minute());
     second = String(gps.time.second());
     year = String(gps.date.year());
     month = String(gps.date.month());
-    day = String(gps.date.day());      
+    day = String(gps.date.day());
     if (hour.length() == 1)
     {
        hour = "0" + hour;     
@@ -250,52 +209,54 @@ void loop() {
     }
     tDate = year + "-" + month + "-" + day;
     tTime = hour + ":" + minute + ":" + second;
-    String tLocation = String(gps.location.lng(), 7) + "," + String(gps.location.lat(), 7) + "," + String(gps.satellites.value());
+    String tLocation = String(gps.location.lng(),6) + ", " + String(gps.location.lat(),6);
     String tDateTime = tDate + " " + tTime;
     String tSpeed = String(gps.speed.kmph(),0);
+    String tSatInfo = "Age=" + String(gps.location.age()) + " Sat=" + String(gps.satellites.value());
     float c = tempsensor.readTempC();
     String tTemp = String(c,0);
-    csvOutStr = tDateTime + "," + tLocation + "," + tSpeed + "," + tTemp + "\n";
-    Serial.println(csvOutStr);
-    display.setRotation(1);
-    display.fillScreen(GxEPD_WHITE);
-    display.setTextColor(GxEPD_BLACK);  
-    display.setFont(&FreeMonoBold9pt7b);
-    display.setCursor(15, 13);
-    display.print(tDateTime.c_str());
-    display.setCursor(5, 60);
-    display.setFont(&FreeMonoBold24pt7b);
-    display.print(tSpeed);
-//    display.print(String(120));
-    display.setFont(&FreeMonoBold9pt7b);
-    display.setCursor(90, 60);
-    display.print("km/h");
-    display.setCursor(145, 60);
-    display.setFont(&FreeMonoBold24pt7b);      
-    display.print(tTemp.c_str());
-//    display.print(String(120));
-    display.setFont(&FreeMonoBold12pt7b);
-    display.setCursor(230, 60);
-    display.print("C");
-    display.setFont(&FreeMonoBold9pt7b);
-    display.setCursor(5, 100);
-    display.print(tLocation);
-    display.setCursor(20, 110);
-    display.setFont(&FreeMonoBold12pt7b);
-//    client.publish(TOPIC.c_str(), msg);  
-    display.updateWindow(0, 0,  249,  127, true);    
-    if (sdOK) {
-//    logSDCard(); 
-    // Increment readingID on every new reading
-    readingID++;
-    }    
-  } else {
-    Serial.println("GPS not available");
-  }
-  delay(2000);
+    gpsLastSecond = gps.time.second();
+    if ((gps.location.lng() != 0.0) && (gps.location.age() < 1000)) {
+      csvOutStr = tDateTime + "," + tLocation + "," + tTemp + "," + tSpeed + "\n";
+      Serial.println(csvOutStr);
+      display.setRotation(1);
+      display.fillScreen(GxEPD_WHITE);
+      display.setTextColor(GxEPD_BLACK);  
+      display.setFont(&FreeMonoBold9pt7b);
+      display.setCursor(15, 13);
+      display.print(tDateTime.c_str());
+      display.setCursor(5, 60);
+      display.setFont(&FreeMonoBold24pt7b);
+      display.print(tSpeed);
+  //    display.print(String(120));
+      display.setFont(&FreeMonoBold9pt7b);
+      display.setCursor(90, 60);
+      display.print("km/h");
+      display.setCursor(145, 60);
+      display.setFont(&FreeMonoBold24pt7b);      
+      display.print(tTemp.c_str());
+  //    display.print(String(120));
+      display.setFont(&FreeMonoBold12pt7b);
+      display.setCursor(230, 60);
+      display.print("C");
+      display.setFont(&FreeMonoBold9pt7b);
+      display.setCursor(5, 90);
+      display.print(tLocation);
+      display.setCursor(5, 110);
+      display.print(tSatInfo);
+    } else {
+      Serial.println(" Bad GPS Signal");
+      display.setRotation(1);
+      display.fillScreen(GxEPD_WHITE);
+      display.setTextColor(GxEPD_BLACK);  
+      display.setFont(&FreeMonoBold24pt7b);
+      display.setCursor(5, 60);
+      display.setFont(&FreeMonoBold24pt7b);
+      display.print(" NO GPS SIGNAL");             
+    }
+    display.updateWindow(0, 0,  249,  127, true);
+    }
 }
-
-
 // Write the sensor readings on the SD card
 void logSDCard() {
   dataMessage = String(readingID) + " , " + String(csvOutStr) + "\r\n";

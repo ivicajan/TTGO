@@ -20,9 +20,9 @@ Adafruit_MCP9808 tempsensor = Adafruit_MCP9808();
 #define TIME_TO_SLEEP  600       /* Time ESP32 will go to sleep (in seconds) */
 
 // define wifi 
-const char* ssid = "naia_2g";
-const char* password = "Malinska";
-const char* mqtt_server = "192.168.1.101";
+const char* ssid = "change to yours";
+const char* password = "change to yours";
+const char* mqtt_server = "192.168.1.101";  // depending on raspberry pi IP address
 
 WiFiClient espClient;
 PubSubClient client(espClient);

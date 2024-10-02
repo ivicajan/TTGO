@@ -294,6 +294,7 @@ void SD_init() {
 
 //  reconnecting to MQTT server, timout happens from time to time
 void reconnect() {
+  int cnt=0;
   // Loop until we're reconnected to MQTT server
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
@@ -304,6 +305,10 @@ void reconnect() {
       // Subscribe
       client.subscribe("dnevna_soba/temp");
     } else {
+      if (cnt>30) {
+        ESP.reset();
+      }
+      cnt++;
       Serial.print("failed, rc=");
       Serial.print(client.state());
       Serial.println(" try again in 5 seconds");
